@@ -138,7 +138,7 @@ class Device(object):
     def device_receive(cls, data_connection: Connection, ctrl_connection: Connection, dev_parameters: OrderedDict):
         if not cls.init_device(ctrl_connection, is_tx=False, parameters=dev_parameters):
             ctrl_connection.send("failed to start rx mode")
-            return False
+            #return False
 
         try:
             cls.adapt_num_read_samples_to_sample_rate(dev_parameters[cls.Command.SET_SAMPLE_RATE.name])
@@ -181,7 +181,7 @@ class Device(object):
     def device_send(cls, ctrl_connection: Connection, send_config: SendConfig, dev_parameters: OrderedDict):
         if not cls.init_device(ctrl_connection, is_tx=True, parameters=dev_parameters):
             ctrl_connection.send("failed to start tx mode")
-            return False
+            #return False
 
         if cls.ASYNCHRONOUS:
             ret = cls.enter_async_send_mode(send_config.get_data_to_send)

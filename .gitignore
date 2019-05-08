@@ -49,3 +49,4 @@ src/urh/dev/native/lib/*.cpp
 
 
 misc/*
+src/urh/dev/native/.DS_Store
