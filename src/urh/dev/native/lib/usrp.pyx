@@ -4,7 +4,7 @@ from urh.dev.native.lib.cusrp cimport *
 import numpy as np
 # noinspection PyUnresolvedReferences
 cimport numpy as np
-from libc.stdlib cimport malloc, free
+from libc.stdlib cimport malloc, free, calloc
 # noinspection PyUnresolvedReferences
 from cython.view cimport array as cvarray  # needed for converting of malloc array to python array
 
@@ -18,7 +18,10 @@ from ctypes import *
 from libc.stdio cimport *
 
 import os
+import stat
 import subprocess
+import time
+
 
 cdef uhd_usrp_handle _c_device
 cdef uhd_rx_streamer_handle rx_streamer_handle
@@ -28,11 +31,11 @@ cdef uhd_tx_metadata_handle tx_metadata_handle
 
 cpdef bint IS_TX = False
 cpdef size_t CHANNEL = 0
-cdef size_t max_num_rx_samples = 300
-cdef size_t max_num_tx_samples = 300
+cdef size_t max_num_rx_samples = 2040
+cdef size_t max_num_tx_samples = 2040
 
-cdef char* tx_file = "/tmp/usrp_tx.dat"
-cdef char* rx_file = "/tmp/usrp_rx.dat"
+cdef char* tx_fifo = "/tmp/tx_fifo"
+cdef char* rx_fifo = "/tmp/rx_fifo"
 
 
 cpdef set_tx(bint is_tx):
@@ -57,28 +60,32 @@ cpdef uhd_error setup_stream():
 
 def run_script(double center_freq):
     print("run_script")
-    return subprocess.Popen(['txrx_files', '--tx-freq', str(int(center_freq)), '--rx-freq', str(int(center_freq))])
+    return subprocess.Popen(['txrx_fifo', '--tx-freq', str(int(center_freq)), '--rx-freq', str(int(center_freq))])
 
 cpdef uhd_error start_stream(int num_samples):
 
     print("waiting for device")
-    while not os.path.isfile(rx_file):
+    while not os.path.exists(rx_fifo):
         pass
 
     print("start_stream")
 
+    if not IS_TX:
+        time.sleep(0.5)
+
     return UHD_ERROR_NONE
 
+
 cpdef uhd_error stop_stream():
+    print("stop_stream")
     return UHD_ERROR_NONE
 
 cpdef uhd_error destroy_stream():
     print("destroy_stream")
-    if not IS_TX:
-        if not os.path.isfile(tx_file):
-            os.remove(rx_file)
+    if IS_TX:
+        os.remove(tx_fifo)
     else:
-        os.remove(tx_file)
+        os.remove(rx_fifo)
 
     return UHD_ERROR_NONE
 
@@ -94,21 +101,22 @@ cpdef uhd_error recv_stream_loop(connection, int num_samples):
 
 cpdef uhd_error recv_stream(connection, int num_samples):
     num_samples = (<int>(num_samples / max_num_rx_samples) + 1) * max_num_rx_samples
-    cdef float* result = <float*>malloc(num_samples * 2 * sizeof(float))
+    cdef float* result = <float*>calloc(sizeof(float), 2*num_samples)
     if not result:
         raise MemoryError()
 
-    cdef FILE *f = fopen(rx_file, "r")
+    cdef FILE *f = fopen(rx_fifo, "r")
+
+    # complex float => 2*num_samples
+    samps = fread(result, sizeof(float), 2*num_samples, f)
+    connection.send_bytes(<float[:samps]>result)
+
+    fclose(f)
+    free(result)
 
 
-    try:
-        while not feof(f):
-            fread(result, sizeof(float), num_samples, f)
-            connection.send_bytes(<float[:num_samples]>result)
 
-    finally:
-        free(result)
-        fclose(f)
+
 
 
 @cython.boundscheck(False)
@@ -127,22 +135,25 @@ cpdef uhd_error send_stream(float[::1] samples):
     if not buff:
         raise MemoryError()
 
-    cdef const void ** buffs = <const void **> &buff
     cdef FILE *f;
 
-    try:
-        for i in range(0, sample_count):
-            buff[index] = samples[i]
-            index += 1
-            if index >= 2*max_num_tx_samples:
-                index = 0
+    for i in range(0, sample_count):
+        buff[index] = samples[i]
 
-        f = fopen(tx_file, "w+")
-        fwrite(buff, sizeof(float), sample_count, f)
+        index += 1
+        if index >= 2*max_num_tx_samples:
+            index = 0
 
-    finally:
-        free(buff)
-        fclose(f)
+            f = fopen(tx_fifo, "w")
+            # complex float => 2*max_num_tx_samples
+            fwrite(buff, sizeof(float), 2*max_num_tx_samples, f)
+            fclose(f)
+
+    f = fopen(tx_fifo, "w")
+    fwrite(buff, sizeof(float), index, f)
+    fclose(f)
+    free(buff)
+
 
 cpdef str get_device_representation():
     print("get_device_representation")
