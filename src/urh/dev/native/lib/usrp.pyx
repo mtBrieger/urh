@@ -82,10 +82,10 @@ cpdef uhd_error stop_stream():
 
 cpdef uhd_error destroy_stream():
     print("destroy_stream")
-    if IS_TX:
-        os.remove(tx_fifo)
-    else:
-        os.remove(rx_fifo)
+    #if IS_TX:
+    os.remove(tx_fifo)
+    #else:
+    os.remove(rx_fifo)
 
     return UHD_ERROR_NONE
 
