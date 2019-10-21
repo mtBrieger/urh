@@ -57,6 +57,7 @@ void send_from_file(uhd::tx_streamer::sptr tx_stream,
     md.start_of_burst = false;
     md.end_of_burst   = false;
     std::vector<std::complex<float>> buff(2040);
+    std::remove(file.c_str());
     std::cout << "make" << std::endl;
     if (mkfifo(file.c_str(), 0666) == -1) {
         std::cout << "mkfifo error: " << std::strerror(errno) << std::endl;
